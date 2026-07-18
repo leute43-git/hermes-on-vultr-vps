@@ -1,0 +1,14 @@
+[Unit]
+Description=Hermes service health check
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=YOUR_USER
+WorkingDirectory=/opt/hermes-on-vultr-vps
+ExecStart=/opt/hermes-on-vultr-vps/.venv/bin/python examples/health_check.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
