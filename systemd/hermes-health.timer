@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Hermes health check twice daily
+
+[Timer]
+OnCalendar=*-*-* 08:30:00 Asia/Seoul
+OnCalendar=*-*-* 20:30:00 Asia/Seoul
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target
+
