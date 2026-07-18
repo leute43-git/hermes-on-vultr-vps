@@ -1,0 +1,26 @@
+# Hermes Web Dashboard — Tailscale-only bind + basic-auth gate
+# Install as a *user* service for the operating account (not root):
+#   mkdir -p ~/.config/systemd/user
+#   cp hermes-dashboard.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now hermes-dashboard
+#   loginctl enable-linger $USER   # survive logout/reboot
+#
+# Replace TAILSCALE_IP with this machine's Tailscale address (100.x.y.z).
+# Auth is mandatory on a non-loopback bind: configure dashboard.basic_auth
+# in config.yaml first (see README) or the server refuses to start.
+# --skip-build serves the prebuilt web UI (build it on another PC if this
+# server is small — see README "빌드 우회").
+
+[Unit]
+Description=Hermes Web Dashboard (Tailscale bind, basic-auth)
+After=network-online.target
+
+[Service]
+ExecStart=%h/.hermes/hermes-agent/venv/bin/hermes dashboard --host TAILSCALE_IP --port 9119 --no-open --skip-build
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target
