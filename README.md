@@ -4,26 +4,42 @@
 
 Hermes는 정해진 공개정보를 수집하고 서비스를 점검하며, 결과를 채널의 성격에 맞춰 **Telegram·Slack·KakaoTalk 나에게 보내기**로 전달합니다. 이 저장소는 단순 설치 명령 모음이 아니라, 실제 운영에서 필요했던 권한 경계·부분 실패 복구·비밀 분리까지 설명합니다.
 
-```text
-[Vultr Seoul VPS]
-       |
-       +-- Hermes AI Agent
-       |     +-- scheduled briefing
-       |     +-- public-data jobs
-       |     `-- service health check
-       |
-       +-- approval boundary
-       |     +-- routine read-only jobs: allowed
-       |     `-- delete / install / pay / send externally: denied or approved
-       |
-       +-- delivery (public internet, outbound only)
-       |     +-- Telegram: short alert
-       |     +-- Slack: full archive + thread
-       |     `-- KakaoTalk: personal daily digest
-       |
-       `-- management plane (Tailscale private network ONLY)
-             +-- SSH: key-only, public IP drops everything
-             `-- Web Dashboard: Tailscale bind + password gate
+```mermaid
+flowchart TB
+    subgraph console["🖥️ Windows 11 — 관리 콘솔 · 두 조종석"]
+        desktop["Hermes Desktop 앱<br/>Remote gateway"]
+        browser["브라우저<br/>Web Dashboard"]
+    end
+
+    subgraph tailnet["🔒 Tailscale 사설망 · 100.x.y.z — 관리면 · 공인망에 소켓 없음"]
+        vpn(("암호화 터널"))
+    end
+
+    subgraph server["☁️ Vultr Seoul VPS — 전령 본체"]
+        dash["Web Dashboard<br/>Tailscale bind + 비밀번호 게이트"]
+        hermes["Hermes AI Agent<br/>추론 · 정기 임무 · 헬스체크"]
+        gate{{"승인 경계<br/>읽기·수집 = 허용<br/>삭제·설치·결제·외부발송 = 사람 승인"}}
+    end
+
+    subgraph delivery["📡 배달면 · 공인 인터넷 · 나가기 전용 · 듣는 포트 없음"]
+        tg["Telegram · 경보"]
+        sl["Slack · 서고"]
+        kko["KakaoTalk · 생활"]
+    end
+
+    desktop -->|원격 백엔드| vpn
+    browser -->|브라우저 접속| vpn
+    vpn --> dash
+    dash --- hermes
+    hermes --> gate
+    gate -->|승인된 발송만| tg
+    gate -->|승인된 발송만| sl
+    gate -->|승인된 발송만| kko
+
+    style console fill:#e8f0fe,stroke:#4285f4
+    style tailnet fill:#eef2ff,stroke:#6366f1
+    style server fill:#fff4e5,stroke:#f5a623
+    style delivery fill:#e6f4ea,stroke:#34a853
 ```
 
 두 개의 면을 절대 섞지 않습니다. **배달면**은 봇 API로 바깥에 말을 걸 뿐 듣는 포트가 없고, **관리면**(SSH·Web Dashboard)은 Tailscale 사설망 안에서만 열립니다. 공인 인터넷에서 이 서버는 닫힌 상자입니다.
@@ -167,9 +183,18 @@ curl http://TAILSCALE_IP:9119/api/config     # 무인증: 401 이어야 함
 curl -m 5 http://PUBLIC_IP:9119/api/status   # 공인망: 연결 자체가 안 되어야 함
 ```
 
-### Hermes Desktop을 원격 백엔드로 (선택)
+### Windows 11: Desktop 앱 설치와 원격 연결
 
-데스크톱 앱은 Settings → Gateway → Remote gateway에 같은 주소·계정을 넣으면 이 대시보드에 붙습니다 — 웹과 데스크톱이 같은 서버의 같은 전령을 보는 두 창이 됩니다. 단 2026-07 현재 **Windows 11 최신 빌드에서 Desktop이 기동 즉시 충돌하는 미해결 이슈**가 있습니다([NousResearch/hermes-agent#38216](https://github.com/NousResearch/hermes-agent/issues/38216) — 렌더러·GPU 자식 프로세스가 동일 offset의 STATUS_BREAKPOINT로 종료·드라이버 무관). macOS에서는 보고가 없습니다. Windows에서는 새 릴리스가 나올 때까지 Web Dashboard가 본선입니다.
+Hermes Desktop 앱을 노트북에 설치하면 브라우저 대시보드와 **같은 VPS 전령을 보는 두 번째 조종석**이 됩니다. 두뇌(모델·키)는 VPS에만 있고, 노트북 앱은 그 전령을 조종하는 화면일 뿐입니다.
+
+1. **설치** — 공식 배포처에서 Windows용 Desktop 설치 파일을 받아 설치합니다. 첫 실행에서 모델 제공자를 물으면 **"provider later"(나중에 선택)** 를 고릅니다. 노트북에는 API 키를 심지 않습니다 — 추론은 VPS가 합니다.
+2. **원격 게이트웨이 선택** — Settings(⚙️) → **Gateway** → **Remote gateway**.
+3. **주소 입력** — Remote URL에 대시보드 주소를 넣습니다: `http://TAILSCALE_IP:9119`. Tailscale 사설망 안이므로 `http`가 정상입니다(공인 TLS가 아님 — `https`로 바꾸지 않습니다).
+4. **로그인** — 대시보드가 아이디/비밀번호 게이트를 쓰면 **Sign in**으로 인증합니다(세션은 자동 갱신).
+5. **연결** — **Test remote**로 확인한 뒤 **Save and reconnect**. 성공하면 `Connected to http://TAILSCALE_IP:9119 · Hermes x.y.z`가 표시됩니다.
+6. **검증** — 파일 패널에 VPS의 홈 디렉토리(`.bashrc`·`.profile` 같은 리눅스 파일)가 보이고, 상태가 **Inference ready**, 메신저 채널이 **Connected**이면 원격 백엔드에 제대로 붙은 것입니다.
+
+> **Windows 11 기동 충돌 이력(해결됨).** 초기 빌드는 Windows 11에서 실행 즉시 렌더러·GPU 자식 프로세스가 동일 offset의 `STATUS_BREAKPOINT`로 종료되는 문제가 있었습니다([NousResearch/hermes-agent#38216](https://github.com/NousResearch/hermes-agent/issues/38216)). 이 이슈는 이후 수정되어 **닫혔고**(PR #66842), 수정이 포함된 빌드에서는 Windows 11에서 정상 설치·연결됩니다. 옛 빌드에서 기동 즉시 충돌하면 수정이 든 최신 빌드로 갱신하십시오. 어느 경우든 **Web Dashboard(브라우저)** 는 데스크톱 없이도 같은 관리 기능을 제공하는 대안입니다.
 
 ## 운영 원칙
 
